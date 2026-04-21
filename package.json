@@ -8,5 +8,9 @@
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "dependencies": {
+    "fastify": "^5.8.5",
+    "ioredis": "^5.10.1"
   }
 }
