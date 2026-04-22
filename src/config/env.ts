@@ -1,0 +1,1 @@
+const DB_CONNECTION = "postgres://app:app_password@localhost:5432/app_db"
