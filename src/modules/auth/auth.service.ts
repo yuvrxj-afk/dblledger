@@ -60,4 +60,16 @@ export async function loginUser(email: string, password: string) {
     return dto;
 }
 
+export async function getUserById(id: string) {
+    const rows = await db`
+    select id,email,role,created_at
+    from users
+    where id = ${id}
+    limit 1
+    `
+    if (rows.length === 0) return null;
+    const u = rows[0] as UserDTO
+    return u;
+}
+
 export class EmailAlreadyExistsError extends Error { }

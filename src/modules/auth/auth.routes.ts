@@ -1,9 +1,12 @@
 import type { FastifyPluginAsync } from "fastify"
 import { loginBodySchema, registerBodySchema } from "./auth.schema"
-import { EmailAlreadyExistsError, loginUser, registerUser } from "./auth.service"
+import { EmailAlreadyExistsError, getUserById, loginUser, registerUser } from "./auth.service"
 import { signAccessToken, signRefreshToken, verifyAccessToken, verifyRefreshToken } from "../../utils/jwt";
+import { redis } from "../../plugins/redis";
 
 type AuthBody = { email: string; password: string };
+
+const REFRESH_COOKIE_OPTS = { httpOnly: true, sameSite: "lax" as const, path: "/auth", secure: false };
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
     app.post<{ Body: AuthBody }>("/register", { schema: { body: registerBodySchema } }, async (req, reply) => {
@@ -27,15 +30,27 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         const sid = crypto.randomUUID()
         const jti = crypto.randomUUID()
 
+        await redis.set(`session:${sid}`, jti, "EX", 60 * 60 * 24 * 7)
+
         const refreshToken = await signRefreshToken({ sub: user.id, sid, jti })
 
-        reply.setCookie("refresh_token", refreshToken, {
-            httpOnly: true,
-            sameSite: "lax",
-            path: '/auth/refresh',
-            secure: false,
-        })
-        return reply.code(200).send({ message: "logged in", accessToken: accessToken });
+        reply.setCookie("refresh_token", refreshToken, REFRESH_COOKIE_OPTS)
+        return reply.code(200).send({ message: "logged in", accessToken, user });
+    })
+
+    app.post("/logout", async (req, reply) => {
+        const token = req.cookies.refresh_token
+        if (!token) return reply.code(401).send({ message: "missing refresh token" })
+
+        try {
+            const { sid } = await verifyRefreshToken(token)
+            await redis.del(`session:${sid}`)
+
+            reply.setCookie("refresh_token", "", REFRESH_COOKIE_OPTS)
+            return reply.code(200).send({ message: "logged out!" })
+        } catch (error) {
+            return reply.code(401).send({ message: "invalid refresh token" })
+        }
     })
 
     app.get("/me", async (req, reply) => {
@@ -65,7 +80,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
         try {
             const { sub, role } = await verifyAccessToken(token)
-            if (role !== "admin") return reply.code(403).send({ message: "invalid admin login!" })
+            if (role !== "admin") return reply.code(403).send({ message: "forbidden" })
             return reply.code(200).send({ message: "welcome admin!" })
         } catch (error) {
             return reply.code(401).send({ message: "invalid token" })
@@ -73,12 +88,34 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     })
 
     app.post("/refresh", async (req, reply) => {
-        const cookie = req.cookies.refresh_token
-        if (!cookie) return reply.send(401)
-        const status = await verifyRefreshToken(cookie)
-        if (!status) {
-            return reply.code(401).send({ message: "incorrect token" })
+        const token = req.cookies.refresh_token
+        if (!token) return reply.code(401).send({ message: "missing refresh token" })
+
+        try {
+            const { sub, sid, jti } = await verifyRefreshToken(token)
+
+            const user = await getUserById(sub)
+            if (!user) return reply.code(401).send({ message: "invalid refresh token" })
+
+            const currentJTI = await redis.get(`session:${sid}`)
+
+            if (!currentJTI || currentJTI != jti) {
+                await redis.del(`session:${sid}`)
+                return reply.code(401).send({ message: "invalid refresh token" })
+            }
+
+            const accessToken = await signAccessToken({ sub, role: user.role })
+
+            const newJti = crypto.randomUUID()
+
+            await redis.set(`session:${sid}`, newJti, "EX", 60 * 60 * 24 * 7)
+            const newRefreshToken = await signRefreshToken({ sub, sid, jti: newJti })
+
+            reply.setCookie("refresh_token", newRefreshToken, REFRESH_COOKIE_OPTS)
+
+            return reply.code(200).send({ accessToken })
+        } catch (error) {
+            return reply.code(401).send({ message: "invalid refresh token" })
         }
-        
     })
 }

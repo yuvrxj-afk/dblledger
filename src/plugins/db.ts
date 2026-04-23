@@ -1,4 +1,5 @@
 import postgres from "postgres";
+import { DB_CONNECTION } from "../config/env";
 
-export const db = postgres("postgres://app:app_password@localhost:5433/app_db")
+export const db = postgres(DB_CONNECTION)
 
