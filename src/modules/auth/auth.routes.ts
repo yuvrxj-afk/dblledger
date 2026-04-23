@@ -39,18 +39,30 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     })
 
     app.post("/logout", async (req, reply) => {
-        const token = req.cookies.refresh_token
-        if (!token) return reply.code(401).send({ message: "missing refresh token" })
+        const refreshToken = req.cookies.refresh_token
+        const auth = req.headers.authorization
 
-        try {
-            const { sid } = await verifyRefreshToken(token)
-            await redis.del(`session:${sid}`)
-
-            reply.setCookie("refresh_token", "", REFRESH_COOKIE_OPTS)
-            return reply.code(200).send({ message: "logged out!" })
-        } catch (error) {
-            return reply.code(401).send({ message: "invalid refresh token" })
+        // Invalidate refresh session in Redis
+        if (refreshToken) {
+            try {
+                const { sid } = await verifyRefreshToken(refreshToken)
+                await redis.del(`session:${sid}`)
+            } catch {}
         }
+
+        // Blocklist access token so /me and /admin reject it immediately
+        if (auth?.startsWith("Bearer ")) {
+            try {
+                const { jti, exp } = await verifyAccessToken(auth.slice("Bearer ".length))
+                const remainingTtlSeconds = Math.floor(exp - Date.now() / 1000)
+                if (remainingTtlSeconds > 0) {
+                    await redis.set(`blocklist:${jti}`, "1", "EX", remainingTtlSeconds)
+                }
+            } catch {}
+        }
+
+        reply.setCookie("refresh_token", "", REFRESH_COOKIE_OPTS)
+        return reply.code(200).send({ message: "logged out!" })
     })
 
     app.get("/me", async (req, reply) => {
@@ -62,7 +74,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
         const token = auth.slice("Bearer ".length)
         try {
-            const { sub, role } = await verifyAccessToken(token)
+            const { sub, role, jti } = await verifyAccessToken(token)
+            const blocked = await redis.get(`blocklist:${jti}`)
+            if (blocked) return reply.code(401).send({ message: "token revoked" })
             return reply.code(200).send({ user: { id: sub, role: role } })
         } catch (error) {
             return reply.code(401).send({ message: "invalid token" })
@@ -79,7 +93,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         const token = auth.slice("Bearer ".length)
 
         try {
-            const { sub, role } = await verifyAccessToken(token)
+            const { role, jti } = await verifyAccessToken(token)
+            const blocked = await redis.get(`blocklist:${jti}`)
+            if (blocked) return reply.code(401).send({ message: "token revoked" })
             if (role !== "admin") return reply.code(403).send({ message: "forbidden" })
             return reply.code(200).send({ message: "welcome admin!" })
         } catch (error) {

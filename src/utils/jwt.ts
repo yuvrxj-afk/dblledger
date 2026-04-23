@@ -20,18 +20,23 @@ export async function signAccessToken(input: { sub: string; role: string }): Pro
         .setExpirationTime(ttl)
         .setIssuedAt()
         .setSubject(input.sub)
+        .setJti(crypto.randomUUID())
         .setProtectedHeader({ alg: "HS256", typ: "JWT" })
         .sign(getAccessSecret())
 }
 
-export async function verifyAccessToken(token: string): Promise<{ sub: string; role: string }> {
+export async function verifyAccessToken(token: string): Promise<{ sub: string; role: string; jti: string; exp: number }> {
     const { payload } = await jwtVerify(token, getAccessSecret())
     const sub = payload.sub
     const role = payload.role
+    const jti = payload.jti
+    const exp = payload.exp
 
     if (typeof sub !== "string") throw new Error("token missing sub");
     if (typeof role !== "string") throw new Error("token missing role");
-    return { sub, role };
+    if (typeof jti !== "string") throw new Error("token missing jti");
+    if (typeof exp !== "number") throw new Error("token missing exp");
+    return { sub, role, jti, exp };
 }
 
 
@@ -47,14 +52,16 @@ export async function signRefreshToken(input: { sub: string; sid: string; jti: s
 }
 
 
-export async function verifyRefreshToken(token: string): Promise<{ sub: string; sid: string; jti: string }> {
+export async function verifyRefreshToken(token: string): Promise<{ sub: string; sid: string; jti: string, exp: number }> {
     const { payload } = await jwtVerify(token, getRefreshSecret())
     const sub = payload.sub
     const jti = payload.jti
     const sid = payload.sid
+    const exp = payload.exp
 
     if (typeof sub !== "string") throw new Error("token missing sub");
     if (typeof jti !== "string") throw new Error("token missing jti");
     if (typeof sid !== "string") throw new Error("token missing sid");
-    return { sub, sid, jti };
+    if (typeof exp !== "number") throw new Error("token missing exp");
+    return { sub, sid, jti, exp };
 }
