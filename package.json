@@ -3,6 +3,10 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "dev": "bun --hot src/server.ts",
+    "worker": "bun run src/workers/index.ts"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
@@ -13,10 +17,12 @@
     "@fastify/cookie": "^11.0.2",
     "argon2": "^0.44.0",
     "bcrypt": "^6.0.0",
+    "bullmq": "^5.76.1",
     "fastify": "^5.8.5",
     "ioredis": "^5.10.1",
     "jose": "^6.2.2",
     "jsonwebtoken": "^9.0.3",
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "stripe": "^22.0.2"
   }
 }

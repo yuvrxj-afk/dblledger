@@ -1,4 +1,12 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: dblledger_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
   db:
     image: postgres:16
     container_name: dblledger_db
@@ -13,3 +21,4 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
