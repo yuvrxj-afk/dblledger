@@ -21,3 +21,15 @@ export async function getPortfolio(userId: string) {
 
     return data
 }
+
+export async function createTransaction(userId: string, amount: number, description: string) {
+    await db`
+    INSERT INTO transactions (user_id,amount,description)
+    VALUES (${userId},${amount},${description})
+    `
+
+    try {
+        await redis.del(`portfolio:${userId}`)
+    }
+    catch (err) { }
+}
