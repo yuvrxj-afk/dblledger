@@ -14,3 +14,5 @@ redis.on("connect", () => {
 redis.on("close", () => {
     console.warn("[Redis] connection closed");
 });
+
+redis.connect().catch(() => {})
