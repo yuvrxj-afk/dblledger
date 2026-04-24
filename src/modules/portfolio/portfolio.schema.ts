@@ -5,7 +5,7 @@ export const txBodySchema = {
         additionalProperties: false,
         required: ["userId", "amount", "description"],
         properties: {
-            userID: { type: "string" },
+            userId: { type: "string" },
             description: { type: "string" },
             amount: { type: "number" },
         }
