@@ -1,5 +1,6 @@
 import { db } from "../../plugins/db";
 import { redis } from "../../plugins/redis";
+import { withLock } from "../../utils/redisLock";
 
 export async function getPortfolioFromDB(id: string) {
     return await db`
@@ -13,13 +14,20 @@ export async function getPortfolio(userId: string) {
         if (hit) { return JSON.parse(hit) }
     } catch { } // Redis down — fall through
 
-    const data = await getPortfolioFromDB(userId)
+    return withLock(`portfolio:${userId}`, 5, async () => {
+        try {
+            const hit = await redis.get(`portfolio:${userId}`)
+            if (hit) { return JSON.parse(hit) }
+        } catch { }
 
-    try {
-        await redis.set(`portfolio:${userId}`, JSON.stringify(data), 'EX', 60)
-    } catch { } // Redis down — still return data
+        const data = await getPortfolioFromDB(userId)
 
-    return data
+        try {
+            await redis.set(`portfolio:${userId}`, JSON.stringify(data), 'EX', 60)
+        } catch { }
+        
+        return data;
+    })
 }
 
 export async function createTransaction(userId: string, amount: number, description: string) {
@@ -31,5 +39,5 @@ export async function createTransaction(userId: string, amount: number, descript
     try {
         await redis.del(`portfolio:${userId}`)
     }
-    catch (err) { }
+    catch { }
 }

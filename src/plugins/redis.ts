@@ -1,7 +1,7 @@
 import Redis from "ioredis";
 import { REDIS_URL } from "../config/env";
 
-export const redis = new Redis(REDIS_URL, { lazyConnect: true, maxRetriesPerRequest: null })
+export const redis = new Redis(REDIS_URL, { lazyConnect: true })
 
 redis.on("error", (err) => {
     console.error("[Redis] connection error:", err.message)
